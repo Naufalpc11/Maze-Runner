@@ -24,6 +24,8 @@ EXPLORED_C = (90, 130, 220)
 NPC_C = (240, 240, 240)
 TEXT_C = (220, 220, 220)
 COST2_C = (160, 140, 60)
+LOCKED_WALL_C = (150, 60, 120)
+GRID_COLS, GRID_ROWS = 30, 22
 
 def in_bounds(x, y):
     return 0 <= x < GRID_COLS and 0 <= y < GRID_ROWS
@@ -34,9 +36,10 @@ def neighbors(pos, grid):
     out = []
     for dx, dy in dirs:
         nx, ny = x + dx, y + dy
-        if in_bounds(nx, ny) and grid[ny][nx] != 1:
+        if in_bounds(nx, ny) and grid[ny][nx] not in (1, 3):
             out.append((nx, ny))
     return out
+
 
 def manhattan(a, b):
     return abs(a[0]-b[0]) + abs(a[1]-b[1])
@@ -53,17 +56,11 @@ def reconstruct(came_from, start, goal):
     return path
 
 def compute_path_cost(grid, path):
-    """
-    Cost dihitung per langkah:
-    - Masuk ke tile {0 atau lain} = 1
-    - Masuk ke tile {2}          = 2
-    Start tile dianggap cost 0.
-    """
+
     if not path:
         return 0
 
     total = 0
-    # mulai dari index 1, karena cost dibayar saat MASUK ke tile berikutnya
     for (x, y) in path[1:]:
         tile = grid[y][x]
         if tile == 2:
@@ -73,7 +70,6 @@ def compute_path_cost(grid, path):
     return total
 
 
-#metode
 def bfs(grid, start, goal):
     t0 = perf_counter()
     q = deque([start])
@@ -132,7 +128,6 @@ def astar(grid, start, goal):
             nx, ny = nb
             tile = grid[ny][nx]
 
-            # cost dasar 1, cost2 jadi 2
             step_cost = 1
             if tile == 2:
                 step_cost = 2
@@ -169,9 +164,9 @@ def load_level(filename="level.json"):
     return data["grid"], tuple(data["start"]), tuple(data["goal"])
 
 STAGE_FILES = ["stage1.json", "stage2.json", "stage3.json"]
-current_stage = 0      # index stage aktif (0 = stage1, 1 = stage2, 2 = stage3)
+current_stage = 0
 
-LOCK_WALLS = False     # kalau nanti mau freeze tembok, ganti ke True
+LOCK_WALLS = False
 
 pygame.init()
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
@@ -194,8 +189,8 @@ mode = "wall"
 npc_path_index = 0
 npc_tick_accum = 0.0
 npc_pos = start
-mouse_down = False      # lagi tahan klik kiri atau nggak
-paint_value = None      # True = isi wall (1), False = hapus wall (0)
+mouse_down = False
+paint_value = None
 
 def load_stage(index):
     global grid, start, goal, current_stage
@@ -215,7 +210,6 @@ def load_stage(index):
         start = (2, 2)
         goal = (GRID_COLS-3, GRID_ROWS-3)
 
-    # reset state pathfinding + NPC
     path.clear()
     explored.clear()
     npc_pos = start
@@ -248,10 +242,12 @@ def draw():
                 base_color = WALL
             elif val == 2:
                 base_color = COST2_C
+            elif val == 3:
+                base_color = LOCKED_WALL_C
             else:
                 base_color = (22, 24, 30)
 
-            # kalau sudah dieksplor, warnai explored (biar kelihatan)
+
             if (x, y) in explored:
                 base_color = EXPLORED_C
 
@@ -292,7 +288,7 @@ def draw():
         f"Time: {last_time_ms:.4f} ms",
         f"Path length: {len(path)}",
         f"Path cost: {last_cost}",
-        f"Explored: {len(explored)}"
+        f"Computed Blocks: {len(explored)}"
     ]
     y0 = 8
     for line in info_lines:
@@ -324,7 +320,6 @@ def run_algo(which):
     last_algo = which
     last_time_ms = t
 
-    # hitung total cost berdasarkan grid saat ini
     last_cost = compute_path_cost(grid, path)
 
 def handle_mouse(pos, paint_on=None):
@@ -338,34 +333,33 @@ def handle_mouse(pos, paint_on=None):
     cell = (gx, gy)
 
     if mode == "start":
-        if cell != goal and grid[gy][gx] != 1:
+        if cell != goal and grid[gy][gx] not in (1, 3):
             start = cell
             npc_pos = start
 
     elif mode == "goal":
-        if cell != start and grid[gy][gx] != 1:
+        if cell != start and grid[gy][gx] not in (1, 3):
             goal = cell
 
+
     elif mode == "wall":
-        if not LOCK_WALLS and cell != start and cell != goal:
+        if not LOCK_WALLS and cell != start and cell != goal and grid[gy][gx] != 3:
             if paint_on is None:
-                # toggle 0 <-> 1
                 grid[gy][gx] = 0 if grid[gy][gx] == 1 else 1
             else:
                 grid[gy][gx] = 1 if paint_on else 0
 
     elif mode == "cost":
-        # tile cost 2 (gunung), tidak tergantung LOCK_WALLS atau bisa kamu ikutkan juga kalau mau lock full map
-        if cell != start and cell != goal:
+        if cell != start and cell != goal and grid[gy][gx] != 3:
             if paint_on is None:
-                # toggle 0 <-> 2
                 grid[gy][gx] = 0 if grid[gy][gx] == 2 else 2
             else:
                 grid[gy][gx] = 2 if paint_on else 0
 
 
 
-load_stage(0)  # mulai dari stage 1
+
+load_stage(0)
 
 running = True
 while running:
@@ -397,13 +391,15 @@ while running:
             elif event.key == pygame.K_c:
                 for y in range(GRID_ROWS):
                     for x in range(GRID_COLS):
-                        grid[y][x] = 0
+                        if grid[y][x] != 3:
+                            grid[y][x] = 0
                 path.clear()
                 explored.clear()
                 npc_pos = start
                 npc_path_index = 0
                 npc_tick_accum = 0.0
                 last_cost = 0
+
 
             elif event.key == pygame.K_s and ctrl_down:
                 save_level(grid, start, goal, STAGE_FILES[current_stage])
@@ -420,17 +416,15 @@ while running:
             elif event.key == pygame.K_w:
                 mode = "wall"
             elif event.key == pygame.K_h:
-                mode = "cost"   # mode terrain cost=2
+                mode = "cost"
 
-            # ==== GANTI STAGE (KEYBIND) ====
             elif event.key == pygame.K_F1:
-                load_stage(0)  # Stage 1
+                load_stage(0)
             elif event.key == pygame.K_F2:
-                load_stage(1)  # Stage 2
+                load_stage(1)
             elif event.key == pygame.K_F3:
-                load_stage(2)  # Stage 3
+                load_stage(2)
             elif event.key == pygame.K_TAB:
-                # next stage (cycle)
                 next_index = (current_stage + 1) % len(STAGE_FILES)
                 load_stage(next_index)
 
@@ -444,7 +438,6 @@ while running:
                 paint_value = None
 
         elif event.type == pygame.MOUSEMOTION:
-            # drag untuk mode wall / cost saja
             if mouse_down and mode in ("wall", "cost") and event.buttons[0]:
                 handle_mouse(event.pos, paint_on=paint_value)
 
@@ -452,7 +445,7 @@ while running:
             if event.button == 1:
                 mouse_down = True
 
-                local_paint = None  # default toggle (klik sekali)
+                local_paint = None
 
                 mx, my = event.pos
                 gx = (mx - MARGIN_X) // CELL_SIZE
@@ -460,16 +453,14 @@ while running:
 
                 if in_bounds(gx, gy):
                     if mode == "wall":
-                        if not LOCK_WALLS and (gx, gy) != start and (gx, gy) != goal:
-                            # kalau sekarang kosong → drag = gambar wall
-                            # kalau sekarang wall → drag = hapus wall
+                        if (not LOCK_WALLS and (gx, gy) != start and (gx, gy) != goal 
+                            and grid[gy][gx] != 3):
                             local_paint = (grid[gy][gx] == 0)
 
                     elif mode == "cost":
-                        if (gx, gy) != start and (gx, gy) != goal:
-                            # kalau sekarang cost2 → drag = hapus (jadi 0)
-                            # kalau sekarang bukan cost2 → drag = jadikan cost2
+                        if (gx, gy) != start and (gx, gy) != goal and grid[gy][gx] != 3:
                             local_paint = (grid[gy][gx] != 2)
+
 
                 paint_value = local_paint
                 handle_mouse(event.pos, paint_on=paint_value)
