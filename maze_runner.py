@@ -1,8 +1,7 @@
 import pygame
 import json
-import heapq
-from collections import deque
-from time import perf_counter
+
+from path_finding import astar, bfs, compute_path_cost, ucs
 
 WIDTH, HEIGHT = 1400, 700
 GRID_COLS, GRID_ROWS = 30, 22
@@ -19,131 +18,18 @@ GRID_LINE = (35, 38, 44)
 WALL = (70, 74, 82)
 START_C = (80, 200, 120)
 GOAL_C = (220, 90, 90)
-PATH_C = (255, 220, 120)
+# Path overlay color (green-ish) with ~50% opacity.
+# NOTE: We render this using an alpha surface (SRCALPHA), not pygame.draw.rect directly.
+PATH_RGBA = (80, 220, 120, 128)
 EXPLORED_C = (90, 130, 220)
 NPC_C = (240, 240, 240)
 TEXT_C = (220, 220, 220)
 COST2_C = (160, 140, 60)
 LOCKED_WALL_C = (150, 60, 120)
-GRID_COLS, GRID_ROWS = 30, 22
+
 
 def in_bounds(x, y):
     return 0 <= x < GRID_COLS and 0 <= y < GRID_ROWS
-
-def neighbors(pos, grid):
-    x, y = pos
-    dirs = [(1,0),(-1,0),(0,1),(0,-1)]
-    out = []
-    for dx, dy in dirs:
-        nx, ny = x + dx, y + dy
-        if in_bounds(nx, ny) and grid[ny][nx] not in (1, 3):
-            out.append((nx, ny))
-    return out
-
-
-def manhattan(a, b):
-    return abs(a[0]-b[0]) + abs(a[1]-b[1])
-
-def reconstruct(came_from, start, goal):
-    if goal not in came_from:
-        return []
-    cur = goal
-    path = [cur]
-    while cur != start:
-        cur = came_from[cur]
-        path.append(cur)
-    path.reverse()
-    return path
-
-def compute_path_cost(grid, path):
-
-    if not path:
-        return 0
-
-    total = 0
-    for (x, y) in path[1:]:
-        tile = grid[y][x]
-        if tile == 2:
-            total += 2
-        else:
-            total += 1
-    return total
-
-
-def bfs(grid, start, goal):
-    t0 = perf_counter()
-    q = deque([start])
-    came = {start: None}
-    explored = set([start])
-
-    while q:
-        cur = q.popleft()
-        if cur == goal:
-            break
-        for nb in neighbors(cur, grid):
-            if nb not in came:
-                came[nb] = cur
-                explored.add(nb)
-                q.append(nb)
-
-    path = reconstruct(came, start, goal)
-    t1 = perf_counter()
-    return path, explored, (t1 - t0) * 1000
-
-def gbfs(grid, start, goal):
-    t0 = perf_counter()
-    pq = []
-    heapq.heappush(pq, (manhattan(start, goal), start))
-    came = {start: None}
-    explored = set([start])
-
-    while pq:
-        _, cur = heapq.heappop(pq)
-        if cur == goal:
-            break
-        for nb in neighbors(cur, grid):
-            if nb not in came:
-                came[nb] = cur
-                explored.add(nb)
-                heapq.heappush(pq, (manhattan(nb, goal), nb))
-
-    path = reconstruct(came, start, goal)
-    t1 = perf_counter()
-    return path, explored, (t1 - t0) * 1000
-
-def astar(grid, start, goal):
-    t0 = perf_counter()
-    pq = []
-    heapq.heappush(pq, (0, start))
-    came = {start: None}
-    g = {start: 0}
-    explored = set([start])
-
-    while pq:
-        _, cur = heapq.heappop(pq)
-        if cur == goal:
-            break
-
-        for nb in neighbors(cur, grid):
-            nx, ny = nb
-            tile = grid[ny][nx]
-
-            step_cost = 1
-            if tile == 2:
-                step_cost = 2
-
-            ng = g[cur] + step_cost
-
-            if nb not in g or ng < g[nb]:
-                g[nb] = ng
-                f = ng + manhattan(nb, goal)
-                came[nb] = cur
-                explored.add(nb)
-                heapq.heappush(pq, (f, nb))
-
-    path = reconstruct(came, start, goal)
-    t1 = perf_counter()
-    return path, explored, (t1 - t0) * 1000
 
 
 def save_level(grid, start, goal, filename="level.json"):
@@ -170,9 +56,20 @@ LOCK_WALLS = False
 
 pygame.init()
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Maze Runner AI - BFS vs GBFS vs A*")
+pygame.display.set_caption("Maze Runner AI - BFS vs UCS vs A*")
 clock = pygame.time.Clock()
 font = pygame.font.SysFont("consolas", 18)
+
+# Prebuilt alpha surfaces for path rendering (50% opacity).
+PATH_TILE_SURF = pygame.Surface((CELL_SIZE, CELL_SIZE), pygame.SRCALPHA)
+PATH_TILE_SURF.fill(PATH_RGBA)
+
+PATH_LINE_SURF = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+
+# Pre-made alpha surfaces for path visualization.
+PATH_TILE_SURF = pygame.Surface((CELL_SIZE, CELL_SIZE), pygame.SRCALPHA)
+PATH_TILE_SURF.fill(PATH_RGBA)
+PATH_LINE_SURF = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
 
 grid = [[0 for _ in range(GRID_COLS)] for _ in range(GRID_ROWS)]
 start = (2, 2)
@@ -254,9 +151,22 @@ def draw():
             pygame.draw.rect(screen, base_color, rect)
             pygame.draw.rect(screen, GRID_LINE, rect, 1)
 
+    # Path overlay (green with alpha)
     for (px, py) in path:
-        rect = pygame.Rect(*grid_to_screen(px, py), CELL_SIZE, CELL_SIZE)
-        pygame.draw.rect(screen, PATH_C, rect)
+        screen.blit(PATH_TILE_SURF, grid_to_screen(px, py))
+
+    # Optional: draw a "line" connecting the path nodes (also with alpha)
+    if len(path) >= 2:
+        PATH_LINE_SURF.fill((0, 0, 0, 0))
+        pts = [
+            (
+                MARGIN_X + px * CELL_SIZE + CELL_SIZE // 2,
+                MARGIN_Y + py * CELL_SIZE + CELL_SIZE // 2,
+            )
+            for (px, py) in path
+        ]
+        pygame.draw.lines(PATH_LINE_SURF, PATH_RGBA, False, pts, 4)
+        screen.blit(PATH_LINE_SURF, (0, 0))
 
     sx, sy = start
     gx, gy = goal
@@ -278,7 +188,7 @@ def draw():
         f"H = Cost2 mode",
         f"",
         f"Run:",
-        f"1 = BFS | 2 = GBFS | 3 = A*",
+        f"1 = BFS | 2 = UCS | 3 = A*",
         f"R = Reset path",
         f"C = Clear walls",
         f"",
@@ -310,8 +220,8 @@ def run_algo(which):
 
     if which == "BFS":
         p, ex, t = bfs(grid, start, goal)
-    elif which == "GBFS":
-        p, ex, t = gbfs(grid, start, goal)
+    elif which == "UCS":
+        p, ex, t = ucs(grid, start, goal)
     else:
         p, ex, t = astar(grid, start, goal)
 
@@ -376,7 +286,7 @@ while running:
             if event.key == pygame.K_1:
                 run_algo("BFS")
             elif event.key == pygame.K_2:
-                run_algo("GBFS")
+                run_algo("UCS")
             elif event.key == pygame.K_3:
                 run_algo("A*")
 
