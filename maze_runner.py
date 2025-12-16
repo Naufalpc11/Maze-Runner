@@ -1,9 +1,10 @@
 import pygame
 import json
 
+from evaluation_table import clear_results, draw_table, load_results, save_results
 from path_finding import astar, bfs, compute_path_cost, ucs
 
-WIDTH, HEIGHT = 1400, 700
+WIDTH, HEIGHT = 1600, 900
 GRID_COLS, GRID_ROWS = 30, 22
 CELL_SIZE = 28
 
@@ -53,6 +54,7 @@ STAGE_FILES = ["stage1.json", "stage2.json", "stage3.json"]
 current_stage = 0
 
 LOCK_WALLS = False
+METHOD_ORDER = ["BFS", "UCS", "A*"]
 
 pygame.init()
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
@@ -80,6 +82,7 @@ explored = set()
 last_algo = "-"
 last_time_ms = 0.0
 last_cost = 0
+evaluation_history = load_results()
 
 mode = "wall"
 
@@ -123,6 +126,13 @@ def grid_to_screen(x, y):
 
 def draw():
     screen.fill(BG)
+
+    sidebar_w = max(220, MARGIN_X - 20)
+    sidebar_x = 8
+    sidebar_top = 8
+    sidebar_bottom = HEIGHT - 8
+    sidebar_rect = pygame.Rect(sidebar_x, sidebar_top, sidebar_w, sidebar_bottom - sidebar_top)
+    pygame.draw.rect(screen, (20, 22, 28), sidebar_rect, border_radius=6)
 
     for y in range(GRID_ROWS):
         for x in range(GRID_COLS):
@@ -193,20 +203,35 @@ def draw():
         f"C = Clear walls",
         f"",
         f"CTRL+S Save | CTRL+L Load",
+        f"CTRL+K Clear eval",
         f"",
         f"Algo: {last_algo}",
         f"Time: {last_time_ms:.4f} ms",
         f"Path length: {len(path)}",
         f"Path cost: {last_cost}",
-        f"Computed Blocks: {len(explored)}"
+        f"Computed Blocks: {len(explored)}",
+        f"Eval file: evaluation_results.json"
     ]
-    y0 = 8
+    text_x = sidebar_x + 12
+    y0 = sidebar_top + 12
     for line in info_lines:
         surf = font.render(line, True, TEXT_C)
-        screen.blit(surf, (8, y0))
+        screen.blit(surf, (text_x, y0))
         y0 += 20
 
+    draw_table(
+        screen=screen,
+        font=font,
+        history=evaluation_history,
+        method_order=METHOD_ORDER,
+        width=WIDTH,
+        height=HEIGHT,
+        text_color=TEXT_C,
+        grid_color=GRID_LINE,
+    )
+
     pygame.display.flip()
+
 
 def run_algo(which):
     global path, explored, last_algo, last_time_ms, last_cost, npc_pos, npc_path_index, npc_tick_accum
@@ -231,6 +256,27 @@ def run_algo(which):
     last_time_ms = t
 
     last_cost = compute_path_cost(grid, path)
+    record_evaluation(which)
+
+
+def record_evaluation(which):
+    """Store the latest run result to disk and memory for the on-screen table."""
+    global evaluation_history
+
+    row = {
+        "algo": which,
+        "stage": current_stage + 1,
+        "path_length": len(path),
+        "path_cost": last_cost,
+        "time_ms": round(last_time_ms, 4),
+        "explored": len(explored),
+        "found": bool(path),
+    }
+    existing = {rec.get("algo"): rec for rec in evaluation_history}
+    existing[which] = row
+    evaluation_history = [existing[m] for m in METHOD_ORDER if m in existing]
+    save_results(evaluation_history)
+
 
 def handle_mouse(pos, paint_on=None):
     global grid, start, goal, npc_pos
@@ -318,6 +364,10 @@ while running:
 
             elif event.key == pygame.K_l and ctrl_down:
                 load_stage(current_stage)
+
+            elif event.key == pygame.K_k and ctrl_down:
+                evaluation_history = clear_results()
+                print("Evaluation data cleared.")
 
             elif event.key == pygame.K_s:
                 mode = "start"
