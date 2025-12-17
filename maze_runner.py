@@ -4,7 +4,7 @@ import json
 from evaluation_table import clear_results, draw_table, load_results, save_results
 from path_finding import astar, bfs, compute_path_cost, ucs
 
-WIDTH, HEIGHT = 1600, 900
+WIDTH, HEIGHT = 1550, 900
 GRID_COLS, GRID_ROWS = 30, 22
 CELL_SIZE = 28
 
@@ -19,10 +19,8 @@ GRID_LINE = (35, 38, 44)
 WALL = (70, 74, 82)
 START_C = (80, 200, 120)
 GOAL_C = (220, 90, 90)
-# Path overlay color (green-ish) with ~50% opacity.
-# NOTE: We render this using an alpha surface (SRCALPHA), not pygame.draw.rect directly.
 PATH_RGBA = (80, 220, 120, 128)
-EXPLORED_C = (90, 130, 220)
+EXPLORED_C = (90, 130, 220, 80)
 NPC_C = (240, 240, 240)
 TEXT_C = (220, 220, 220)
 COST2_C = (160, 140, 60)
@@ -133,6 +131,9 @@ def draw():
     sidebar_bottom = HEIGHT - 8
     sidebar_rect = pygame.Rect(sidebar_x, sidebar_top, sidebar_w, sidebar_bottom - sidebar_top)
     pygame.draw.rect(screen, (20, 22, 28), sidebar_rect, border_radius=6)
+    # Surface overlay untuk tile explored (pakai alpha)
+    explored_surf = pygame.Surface((CELL_SIZE, CELL_SIZE), pygame.SRCALPHA)
+    explored_surf.fill(EXPLORED_C)
 
     for y in range(GRID_ROWS):
         for x in range(GRID_COLS):
@@ -145,6 +146,7 @@ def draw():
 
             val = grid[y][x]
 
+            # warna dasar tile
             if val == 1:
                 base_color = WALL
             elif val == 2:
@@ -154,12 +156,14 @@ def draw():
             else:
                 base_color = (22, 24, 30)
 
-
-            if (x, y) in explored:
-                base_color = EXPLORED_C
-
+            # gambar tile dasar + grid line
             pygame.draw.rect(screen, base_color, rect)
             pygame.draw.rect(screen, GRID_LINE, rect, 1)
+
+            # kalau tile ini termasuk explored → overlay transparan
+            if (x, y) in explored:
+                screen.blit(explored_surf, rect.topleft)
+
 
     # Path overlay (green with alpha)
     for (px, py) in path:
@@ -190,8 +194,8 @@ def draw():
     info_lines = [
         f"Stage: {current_stage+1} (F1/F2/F3, TAB next)",
         f"Mode: {mode.upper()} | Click to edit",
-        f"[S] + Click = Start",
-        f"[G] + Click = Goal",
+        f"S = Toggle START mode",
+        f"G = Toggle GOAL mode",
         f"Click = Toggle Wall/Cost2",
         f"",
         f"W = Wall mode",
@@ -356,11 +360,10 @@ while running:
                 npc_tick_accum = 0.0
                 last_cost = 0
 
-
+            # --- Kombinasi dengan CTRL ---
             elif event.key == pygame.K_s and ctrl_down:
                 save_level(grid, start, goal, STAGE_FILES[current_stage])
                 print(f"Saved {STAGE_FILES[current_stage]}")
-                
 
             elif event.key == pygame.K_l and ctrl_down:
                 load_stage(current_stage)
@@ -369,15 +372,22 @@ while running:
                 evaluation_history = clear_results()
                 print("Evaluation data cleared.")
 
-            elif event.key == pygame.K_s:
-                mode = "start"
+            # --- Toggle mode tanpa CTRL ---
+            elif event.key == pygame.K_s and not ctrl_down:
+                # Toggle antara START dan WALL
+                mode = "start" if mode != "start" else "wall"
+
             elif event.key == pygame.K_g:
-                mode = "goal"
+                # Toggle antara GOAL dan WALL
+                mode = "goal" if mode != "goal" else "wall"
+
             elif event.key == pygame.K_w:
                 mode = "wall"
+
             elif event.key == pygame.K_h:
                 mode = "cost"
 
+            # --- Ganti stage ---
             elif event.key == pygame.K_F1:
                 load_stage(0)
             elif event.key == pygame.K_F2:
@@ -388,9 +398,6 @@ while running:
                 next_index = (current_stage + 1) % len(STAGE_FILES)
                 load_stage(next_index)
 
-        elif event.type == pygame.KEYUP:
-            if event.key in (pygame.K_s, pygame.K_g):
-                mode = "wall"
 
         elif event.type == pygame.MOUSEBUTTONUP:
             if event.button == 1:

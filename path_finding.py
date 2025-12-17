@@ -1,14 +1,3 @@
-"""Pathfinding logic for Maze Runner.
-
-Kept in a separate module to make maintenance easier.
-
-Grid encoding (as used by the main game):
-  0 = empty (cost 1)
-  1 = wall (blocked)
-  2 = cost2 tile (cost 2)
-  3 = locked wall (blocked)
-"""
-
 from __future__ import annotations
 
 import heapq
@@ -48,7 +37,6 @@ def reconstruct(came_from: Dict[Pos, Pos | None], start: Pos, goal: Pos) -> List
     while cur != start:
         parent = came_from.get(cur)
         if parent is None:
-            # Shouldn't happen if there's a valid chain back to start.
             return []
         cur = parent
         path.append(cur)
@@ -62,10 +50,6 @@ def step_cost(grid: Grid, to_pos: Pos) -> int:
 
 
 def compute_path_cost(grid: Grid, path: List[Pos]) -> int:
-    """Total cost along the path, ignoring the start tile (same as the UI).
-
-    Empty tiles cost 1, 'cost2' tiles cost 2.
-    """
     if not path:
         return 0
     total = 0
@@ -108,8 +92,7 @@ def ucs(grid: Grid, start: Pos, goal: Pos):
 
     while pq:
         cur_cost, cur = heapq.heappop(pq)
-
-        # Skip stale queue entries.
+        
         if cur_cost != cost_so_far.get(cur, cur_cost):
             continue
 

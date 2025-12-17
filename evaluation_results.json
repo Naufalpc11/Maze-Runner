@@ -1,1 +1,29 @@
-[]
+[
+  {
+    "algo": "BFS",
+    "stage": 1,
+    "path_length": 43,
+    "path_cost": 42,
+    "time_ms": 1.2784,
+    "explored": 652,
+    "found": true
+  },
+  {
+    "algo": "UCS",
+    "stage": 1,
+    "path_length": 43,
+    "path_cost": 42,
+    "time_ms": 1.7223,
+    "explored": 652,
+    "found": true
+  },
+  {
+    "algo": "A*",
+    "stage": 1,
+    "path_length": 43,
+    "path_cost": 42,
+    "time_ms": 2.693,
+    "explored": 554,
+    "found": true
+  }
+]
