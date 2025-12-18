@@ -1,29 +1,29 @@
 [
   {
     "algo": "BFS",
-    "stage": 1,
-    "path_length": 43,
-    "path_cost": 42,
-    "time_ms": 1.2784,
-    "explored": 652,
+    "stage": 3,
+    "path_length": 46,
+    "path_cost": 60,
+    "time_ms": 0.8924,
+    "explored": 469,
     "found": true
   },
   {
     "algo": "UCS",
-    "stage": 1,
-    "path_length": 43,
-    "path_cost": 42,
-    "time_ms": 1.7223,
-    "explored": 652,
+    "stage": 3,
+    "path_length": 46,
+    "path_cost": 45,
+    "time_ms": 1.277,
+    "explored": 469,
     "found": true
   },
   {
     "algo": "A*",
-    "stage": 1,
-    "path_length": 43,
-    "path_cost": 42,
-    "time_ms": 2.693,
-    "explored": 554,
+    "stage": 3,
+    "path_length": 46,
+    "path_cost": 45,
+    "time_ms": 0.4758,
+    "explored": 192,
     "found": true
   }
 ]
